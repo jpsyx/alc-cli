@@ -21,6 +21,11 @@ pub struct Theme {
     info_code: &'static str,
     prompt_code: &'static str,
     matched_code: &'static str,
+    in_progress_code: &'static str,
+    time_soon_code: &'static str,
+    access_online_code: &'static str,
+    access_hybrid_code: &'static str,
+    access_in_person_code: &'static str,
 }
 
 impl Theme {
@@ -39,6 +44,11 @@ impl Theme {
             info_code: "94",
             prompt_code: "1;96",
             matched_code: "1;30;103",
+            in_progress_code: "1;92",
+            time_soon_code: "1;93",
+            access_online_code: "1;92",
+            access_hybrid_code: "1;94",
+            access_in_person_code: "1;96",
         }
     }
 
@@ -112,6 +122,42 @@ impl Theme {
     #[must_use]
     pub fn matched(self, value: &str) -> String {
         self.paint(self.matched_code, value)
+    }
+
+    /// Styles an uppercase in-progress meeting status.
+    #[must_use]
+    pub fn in_progress(self, value: &str) -> String {
+        self.paint(self.in_progress_code, value)
+    }
+
+    /// Styles a relative start time for a meeting beginning soon.
+    #[must_use]
+    pub fn time_soon(self, value: &str) -> String {
+        self.paint(self.time_soon_code, value)
+    }
+
+    /// Styles elapsed time for a meeting already underway.
+    #[must_use]
+    pub fn time_started(self, value: &str) -> String {
+        self.paint(self.error_code, value)
+    }
+
+    /// Styles an online access badge.
+    #[must_use]
+    pub fn access_online(self, value: &str) -> String {
+        self.paint(self.access_online_code, value)
+    }
+
+    /// Styles a hybrid access badge.
+    #[must_use]
+    pub fn access_hybrid(self, value: &str) -> String {
+        self.paint(self.access_hybrid_code, value)
+    }
+
+    /// Styles an in-person access badge.
+    #[must_use]
+    pub fn access_in_person(self, value: &str) -> String {
+        self.paint(self.access_in_person_code, value)
     }
 
     pub(crate) const fn clap_styles(self) -> Styles {

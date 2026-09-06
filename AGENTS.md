@@ -95,13 +95,24 @@ warn when its destination is not on `PATH`.
 - Exclude inactive directory records. Include all active access modes by
   default, rank online-capable results first, and treat an online filter as
   including hybrid meetings.
-- `meeting now` means meetings in progress or starting within the next hour,
-  evaluated in `America/New_York`.
+- `meeting now` means meetings started within the last 30 minutes or starting
+  within the next hour, inclusive and evaluated in `America/New_York`. Do not
+  apply the 30-minute elapsed cutoff to any other meeting command.
+- Date and time schedule shortcuts compose in either order. A time alone means
+  today; `this week` aliases the next-seven-days `week` view; `evening` aliases
+  `night`.
 - Preserve and display the authoritative meeting page URL. Meeting details can
   change, so freshness and source provenance are part of correct output.
 - Build every meeting display through the centralized `MeetingList` and
   `MeetingTable` renderer. Meeting-list commands must reuse its built-in pager,
-  whole-record field matching, and direct-output fallback.
+  whole-record field matching, access shortcuts, relative timing, and
+  original-view reset, and direct-output fallback.
+- Display access as a bold semantic badge beside the meeting name, never as a
+  separate table row. Keep the badge in whole-record matching.
+- In pager filter editing, Ctrl+U clears the full query without exiting, while
+  Backspace on an empty query returns to navigation.
+- Show elapsed time beside every `IN PROGRESS` status as a non-bold red
+  `[Started ... ago]` suffix.
 - Daily Reflections come from AA.org's `/api/reflections/MM/DD` JSON route,
   whose `data` field contains HTML. Validate dates locally and validate the
   response's `data-date`; the endpoint normalizes invalid dates.
@@ -182,6 +193,8 @@ as part of editing the command, exactly like keeping it green.
    is set); pass `Theme::dark(false)` in tests that assert on plain text.
 
    Meeting-search match highlighting uses the semantic `matched` token.
+   Meeting timing uses the semantic `in_progress`, `time_started`, and
+   `time_soon` tokens.
 
 - **Design for dark terminals.** Terminals don't reliably expose a light/dark
   token, so we assume **dark** and use bright, high-contrast codes (never a

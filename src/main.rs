@@ -78,7 +78,23 @@ fn print_meetings(request: MeetingRequest) {
         }
         MeetingRequest::Find(filters) => {
             let matches = meeting::find(&meetings, &filters);
-            meeting::display_find(&matches, filters.origin(), filters.pager_enabled(), theme)
+            meeting::display_find(
+                &matches,
+                filters.origin(),
+                &at,
+                filters.pager_enabled(),
+                theme,
+            )
+        }
+        MeetingRequest::Schedule(options) => {
+            let matches = meeting::schedule(&meetings, &at, &options);
+            meeting::display_find(
+                &matches,
+                options.origin(),
+                &at,
+                options.pager_enabled(),
+                theme,
+            )
         }
     }
     .unwrap_or_else(|error| {

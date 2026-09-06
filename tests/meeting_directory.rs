@@ -177,16 +177,92 @@ fn now_returns_in_progress_and_next_hour_with_online_first() {
         .map(|item| item.meeting().name())
         .collect::<Vec<_>>();
 
+    assert_eq!(names, ["Morning Light Hybrid", "Morning Light Online"]);
+    assert_eq!(matches[0].availability().to_string(), "in progress");
     assert_eq!(
-        names,
+        matches[0].availability(),
+        meeting::Availability::InProgress(15)
+    );
+    assert_eq!(matches[1].availability().to_string(), "starts in 15m");
+}
+
+#[test]
+fn now_includes_thirty_minutes_elapsed_but_excludes_thirty_one() {
+    let meetings = meeting::parse_directory(DIRECTORY).expect("directory should parse");
+    let request = parse_request(["alc", "meeting", "now"], today()).expect("request should parse");
+    let Request::Meeting(MeetingRequest::Now(options)) = request else {
+        panic!("expected now options");
+    };
+    let at_boundary = New_York
+        .with_ymd_and_hms(2026, 9, 6, 9, 30, 0)
+        .single()
+        .expect("fixture time should exist");
+    let past_boundary = New_York
+        .with_ymd_and_hms(2026, 9, 6, 9, 31, 0)
+        .single()
+        .expect("fixture time should exist");
+
+    let at_boundary = meeting::now(&meetings, at_boundary, &options);
+    let past_boundary = meeting::now(&meetings, past_boundary, &options);
+
+    assert!(
+        at_boundary
+            .iter()
+            .any(|item| item.meeting().name() == "Morning Light Hall")
+    );
+    assert!(
+        !past_boundary
+            .iter()
+            .any(|item| item.meeting().name() == "Morning Light Hall")
+    );
+}
+
+#[test]
+fn schedule_views_filter_dates_and_times_without_the_now_cutoff() {
+    let meetings = meeting::parse_directory(DIRECTORY).expect("directory should parse");
+    let at = New_York
+        .with_ymd_and_hms(2026, 9, 6, 9, 45, 0)
+        .single()
+        .expect("fixture time should exist");
+
+    let today_request =
+        parse_request(["alc", "meeting", "today"], today()).expect("today should parse");
+    let afternoon_request = parse_request(["alc", "meeting", "afternoon", "today"], today())
+        .expect("afternoon today should parse");
+    let tomorrow_request =
+        parse_request(["alc", "meeting", "tomorrow"], today()).expect("tomorrow should parse");
+
+    let Request::Meeting(MeetingRequest::Schedule(today_options)) = today_request else {
+        panic!("expected today schedule");
+    };
+    let Request::Meeting(MeetingRequest::Schedule(afternoon_options)) = afternoon_request else {
+        panic!("expected afternoon schedule");
+    };
+    let Request::Meeting(MeetingRequest::Schedule(tomorrow_options)) = tomorrow_request else {
+        panic!("expected tomorrow schedule");
+    };
+
+    let today_names = meeting::schedule(&meetings, &at, &today_options)
+        .iter()
+        .map(|meeting| meeting.name())
+        .collect::<Vec<_>>();
+    let afternoon_names = meeting::schedule(&meetings, &at, &afternoon_options)
+        .iter()
+        .map(|meeting| meeting.name())
+        .collect::<Vec<_>>();
+    let tomorrow = meeting::schedule(&meetings, &at, &tomorrow_options);
+
+    assert_eq!(
+        today_names,
         [
             "Morning Light Hybrid",
             "Morning Light Online",
+            "Later Online",
             "Morning Light Hall"
         ]
     );
-    assert_eq!(matches[0].availability().to_string(), "in progress");
-    assert_eq!(matches[1].availability().to_string(), "starts in 15m");
+    assert_eq!(afternoon_names, ["Later Online"]);
+    assert!(tomorrow.is_empty());
 }
 
 #[test]
@@ -227,8 +303,8 @@ fn renders_online_and_in_person_actions_with_source_links() {
 
     assert!(output.starts_with("1 meeting found (online-capable first).\n\n"));
     assert!(output.contains("┌────────────────┬"));
-    assert!(output.contains("│ Meeting        │ Morning Light Hybrid"));
-    assert!(output.contains("│ Access         │ Hybrid"));
+    assert!(output.contains("│ Meeting        │ Morning Light Hybrid [Hybrid]"));
+    assert!(!output.contains("│ Access         │"));
     assert!(output.contains("│ Schedule       │ Sunday 9:30 AM to 10:30 AM"));
     assert!(output.contains("│ Join           │ https://zoom.us/j/123456789"));
     assert!(output.contains("│ Online details │ Meeting ID: 123 456 789"));
@@ -256,8 +332,8 @@ fn meeting_output_uses_semantic_terminal_styles() {
     let output = meeting::render_find(&meeting::find(&meetings, &filters), None, Theme::dark(true));
 
     assert!(output.contains("\x1b[1;95m1 meeting found (online-capable first).\x1b[0m"));
-    assert!(output.contains("\x1b[94mHybrid"));
     assert!(output.contains("\x1b[97mMorning Light Hybrid"));
+    assert!(output.contains("\x1b[1;94m[Hybrid]\x1b[0m"));
     assert!(output.contains("\x1b[96mJoin"));
     assert!(output.contains("\x1b[97mhttps://zoom.us/j/123456789"));
 }
@@ -277,12 +353,89 @@ fn renders_current_availability_in_new_york_time() {
 
     let output = meeting::render_now(&matches, options.origin(), Theme::dark(false));
 
-    assert!(output.starts_with("3 meetings available now (New York time).\n\n"));
-    assert!(output.contains("│ Access         │ Hybrid"));
+    assert!(output.starts_with("2 meetings available now (New York time).\n\n"));
+    assert!(output.contains("│ Meeting        │ Morning Light Hybrid [Hybrid]"));
     assert!(output.contains("│ Schedule       │ Sunday 9:30 AM to 10:30 AM"));
-    assert!(output.contains("│ Status         │ in progress"));
-    assert!(output.contains("│ Access         │ Online"));
-    assert!(output.contains("│ Status         │ starts in 15m"));
+    assert!(output.contains("│ Status         │ IN PROGRESS [Started 15 minutes ago]"));
+    assert!(output.contains("│ Meeting        │ Morning Light Online [Online]"));
+    assert!(!output.contains("│ Access         │"));
+    assert!(output.contains("│ Schedule       │ Sunday 10:00 AM to 11:00 AM [In 15 minutes]"));
+    assert!(!output.contains("starts in 15m"));
+}
+
+#[test]
+fn current_meeting_timing_uses_prominent_semantic_styles() {
+    let meetings = meeting::parse_directory(DIRECTORY).expect("directory should parse");
+    let request = parse_request(["alc", "meeting", "now"], today()).expect("request should parse");
+    let Request::Meeting(MeetingRequest::Now(options)) = request else {
+        panic!("expected now options");
+    };
+    let at = New_York
+        .with_ymd_and_hms(2026, 9, 6, 9, 45, 0)
+        .single()
+        .expect("fixture time should exist");
+    let matches = meeting::now(&meetings, at, &options);
+
+    let output = meeting::render_now(&matches, options.origin(), Theme::dark(true));
+
+    assert!(output.contains("\x1b[97mSunday 9:30 AM to 10:30 AM"));
+    assert!(output.contains("\x1b[1;92mIN PROGRESS"));
+    assert!(output.contains("\x1b[91m[Started 15 minutes ago]\x1b[0m"));
+    assert!(!output.contains("\x1b[1;91m[Started 15 minutes ago]"));
+    assert!(output.contains("\x1b[1;93m[In 15 minutes]\x1b[0m"));
+}
+
+#[test]
+fn find_marks_an_underway_meeting_with_elapsed_time() {
+    let meetings = meeting::parse_directory(DIRECTORY).expect("directory should parse");
+    let request = parse_request(["alc", "meeting", "find", "morning light hybrid"], today())
+        .expect("request should parse");
+    let Request::Meeting(MeetingRequest::Find(filters)) = request else {
+        panic!("expected find filters");
+    };
+    let at = New_York
+        .with_ymd_and_hms(2026, 9, 6, 9, 38, 0)
+        .single()
+        .expect("fixture time should exist");
+
+    let output = meeting::render_find_at(
+        &meeting::find(&meetings, &filters),
+        filters.origin(),
+        at,
+        Theme::dark(false),
+    );
+
+    assert!(output.contains("│ Status         │ IN PROGRESS [Started 8 minutes ago]"));
+}
+
+#[test]
+fn find_shows_relative_time_through_the_inclusive_two_hour_fifteen_minute_boundary() {
+    let meetings = meeting::parse_directory(DIRECTORY).expect("directory should parse");
+    let request = parse_request(["alc", "meeting", "find", "later online"], today())
+        .expect("request should parse");
+    let Request::Meeting(MeetingRequest::Find(filters)) = request else {
+        panic!("expected find filters");
+    };
+    let matches = meeting::find(&meetings, &filters);
+    let boundary = New_York
+        .with_ymd_and_hms(2026, 9, 6, 8, 45, 0)
+        .single()
+        .expect("fixture time should exist");
+    let outside = New_York
+        .with_ymd_and_hms(2026, 9, 6, 8, 44, 0)
+        .single()
+        .expect("fixture time should exist");
+
+    let boundary_output =
+        meeting::render_find_at(&matches, filters.origin(), boundary, Theme::dark(false));
+    let outside_output =
+        meeting::render_find_at(&matches, filters.origin(), outside, Theme::dark(false));
+
+    assert!(
+        boundary_output
+            .contains("│ Schedule       │ Sunday 11:00 AM to 12:00 PM [In 2 hours 15 minutes]")
+    );
+    assert!(!outside_output.contains("[In "));
 }
 
 #[test]
@@ -290,6 +443,14 @@ fn renders_an_explicit_empty_result() {
     assert_eq!(
         meeting::render_find(&[], None, Theme::dark(false)),
         "No meetings found. Try broader filters.\n"
+    );
+}
+
+#[test]
+fn now_empty_result_explains_both_time_windows() {
+    assert_eq!(
+        meeting::render_now(&[], None, Theme::dark(false)),
+        "No meetings started within the last 30 minutes or begin within the next hour.\n"
     );
 }
 

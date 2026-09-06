@@ -34,11 +34,28 @@ exclude inactive entries, include every active access mode by default, and
 rank online-capable meetings first. Online and in-person filters each include
 hybrids because a hybrid meeting has both capabilities.
 
-## 2026-09-06: Define `meeting now` as a one-hour availability window
+## 2026-09-06: Bound the `meeting now` availability window
 
-`meeting now` returns meetings in progress plus meetings starting within the
-next 60 minutes. Recurring schedules are evaluated in `America/New_York`.
-Online-capable results are ranked before physical-only results.
+`meeting now` returns meetings started no more than 30 minutes ago plus meetings
+starting within the next 60 minutes. Both boundaries are inclusive. Recurring
+schedules are evaluated in `America/New_York`. Online-capable results are
+ranked before physical-only results. The elapsed cutoff is deliberately local
+to `now`; broader schedule and `find` views retain every matching meeting.
+
+## 2026-09-06: Compose schedule shortcuts in either order
+
+Date shortcuts and time-of-day shortcuts form one typed `MeetingSchedule`.
+The first shortcut is represented as a Clap subcommand and any later shortcuts
+as validated positional values, then both are folded into the same day and time
+fields. This makes `tomorrow night` and `evening tomorrow` equivalent without a
+permutation-specific command tree. A narrow pre-parse normalization turns the
+two adjacent tokens `this week` into the canonical `week`; `evening` maps to
+`night`.
+
+A time shortcut alone means today. `week` covers today through the next six
+days. Morning and afternoon reuse NYIG's overlapping morning and midday ranges;
+night combines its evening and night ranges. Distinct competing date or time
+selectors fail instead of making ordering change which filter wins.
 
 ## 2026-09-06: Keep location explicit
 
@@ -108,3 +125,35 @@ the portable terminal boundary; navigation, filtering, layout, and frame
 rendering remain testable pure logic. An external `less` process was rejected
 because it could not provide whole-record live filtering and highlighting with
 the same behavior on every supported platform.
+
+## 2026-09-06: Add access shortcuts and near-term schedule emphasis
+
+The built-in pager uses `a`, `h`, `p`, and `o` as direct access filters while
+in navigation mode. Online and in-person filters include hybrid meetings to
+match the established command-filter capability semantics. These filters
+combine with the live text query, and the same keys remain ordinary characters
+while that query is being edited.
+
+Meeting schedules remain visually primary. An underway meeting receives an
+uppercase bold green status followed by a non-bold red elapsed-time suffix.
+Elapsed minutes come from the same weekly schedule calculation that decides
+whether the meeting is underway, so both `now` and `find` present consistent
+timing. An upcoming meeting receives a bold yellow relative suffix only when
+its start is at most 135 minutes away. The 135-minute horizon provides useful
+near-term context in a general `find` list without changing the narrower
+upcoming membership rule for `meeting now`.
+
+The `r` shortcut resets only transient pager state. It restores all access
+modes, clears the live text query, exits query editing, and returns to the top
+of the list. It deliberately preserves command-line filters and limits by
+retaining the immutable meeting list that originally entered the pager.
+
+Access is displayed as a bold semantic badge directly beside the meeting name.
+This removes a repetitive table row while keeping the capability visible at the
+first scanning point. The badge remains part of the searchable Meeting value,
+and match highlighting takes precedence when a query overlaps it.
+
+Filter editing follows familiar terminal input conventions: Ctrl+U clears the
+entire query without leaving editing, and Backspace on an already empty query
+returns to navigation. This gives both a fast restart and a one-key exit without
+overloading the printable navigation shortcuts used as search text.

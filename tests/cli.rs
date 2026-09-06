@@ -46,7 +46,7 @@ fn invalid_reflection_date_exits_before_fetching() {
 }
 
 #[test]
-fn meeting_help_lists_now_and_find() {
+fn meeting_help_lists_commands_and_schedule_shortcuts() {
     let output = run(&["meeting", "--help"]);
     let stdout = String::from_utf8(output.stdout).expect("help should be UTF-8");
 
@@ -54,7 +54,51 @@ fn meeting_help_lists_now_and_find() {
     assert!(stdout.contains("Usage: alc meeting [COMMAND]"));
     assert!(stdout.contains("now"));
     assert!(stdout.contains("find"));
+    for shortcut in [
+        "today",
+        "tomorrow",
+        "week",
+        "sunday",
+        "tuesday",
+        "saturday",
+        "morning",
+        "afternoon",
+        "night",
+        "evening",
+        "this week",
+    ] {
+        assert!(stdout.contains(shortcut), "missing {shortcut:?} from help");
+    }
     assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn every_schedule_shortcut_has_help_and_examples() {
+    for shortcut in [
+        ["meeting", "today", "--help"].as_slice(),
+        ["meeting", "tomorrow", "--help"].as_slice(),
+        ["meeting", "week", "--help"].as_slice(),
+        ["meeting", "tuesday", "--help"].as_slice(),
+        ["meeting", "morning", "--help"].as_slice(),
+        ["meeting", "afternoon", "--help"].as_slice(),
+        ["meeting", "night", "--help"].as_slice(),
+        ["meeting", "evening", "--help"].as_slice(),
+        ["meeting", "this", "week", "--help"].as_slice(),
+    ] {
+        let output = run(shortcut);
+        let stdout = String::from_utf8(output.stdout).expect("help should be UTF-8");
+
+        assert!(
+            output.status.success(),
+            "help should succeed for {shortcut:?}"
+        );
+        assert!(stdout.contains("Examples:"));
+        assert!(stdout.contains("alc meeting today --type online"));
+        assert!(stdout.contains("alc meeting this week morning"));
+        assert!(stdout.contains("j/k or arrow keys"));
+        assert!(stdout.contains("a shows all"));
+        assert!(stdout.contains("r resets the original view"));
+    }
 }
 
 #[test]
@@ -70,7 +114,24 @@ fn meeting_list_help_documents_pager_controls_and_plain_output() {
         assert!(stdout.contains("/ filters"));
         assert!(stdout.contains("G jumps to the end"));
         assert!(stdout.contains("q quits"));
+        assert!(stdout.contains("a shows all"));
+        assert!(stdout.contains("h selects hybrid"));
+        assert!(stdout.contains("p selects in-person"));
+        assert!(stdout.contains("o selects online"));
+        assert!(stdout.contains("r resets the original view"));
+        assert!(stdout.contains("Ctrl+U clears the filter"));
+        assert!(stdout.contains("Backspace on an empty filter exits editing"));
+        assert!(stdout.contains("In-progress meetings show how long ago they started"));
     }
+}
+
+#[test]
+fn meeting_now_help_documents_the_in_progress_cutoff() {
+    let output = run(&["meeting", "now", "--help"]);
+    let stdout = String::from_utf8(output.stdout).expect("help should be UTF-8");
+
+    assert!(output.status.success());
+    assert!(stdout.contains("started within the last 30 minutes"));
 }
 
 #[test]

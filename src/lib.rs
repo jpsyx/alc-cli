@@ -9,9 +9,13 @@ use clap::{
 
 pub mod daily_reflection;
 pub mod meeting;
+mod schedule;
 pub mod theme;
 
+pub use schedule::{MeetingSchedule, ScheduleDay, ScheduleTime};
+
 use daily_reflection::ReflectionDate;
+use schedule::{MeetingScheduleArgs, MeetingShortcut};
 use theme::Theme;
 
 #[derive(Parser)]
@@ -31,7 +35,7 @@ struct Cli {
 enum CliCommand {
     /// Find meetings from the New York Inter-Group directory.
     #[command(
-        after_help = "With no command, `alc meeting` runs `alc meeting now`.\n\nExamples:\n  alc meeting\n  alc meeting now --type online --limit 10\n  alc meeting find \"turning point\"\n  alc meeting find --region brooklyn --type in-person"
+        after_help = "With no command, `alc meeting` runs `alc meeting now`. Schedule shortcuts include today, tomorrow, week (also `this week`), every weekday, morning, afternoon, and night (also evening). Date and time shortcuts can be combined in either order.\n\nExamples:\n  alc meeting\n  alc meeting now --type online --limit 10\n  alc meeting today --type online\n  alc meeting tomorrow night\n  alc meeting this week morning\n  alc meeting evening tuesday\n  alc meeting find \"turning point\"\n  alc meeting find --region brooklyn --type in-person"
     )]
     Meeting {
         #[command(subcommand)]
@@ -51,16 +55,43 @@ enum CliCommand {
 
 #[derive(Subcommand)]
 enum MeetingCommand {
-    /// Find meetings in progress or starting soon.
+    /// Find recently started meetings or meetings starting soon.
     #[command(
-        after_help = "By default, all active access types are included. Times use America/New_York. Interactive terminals open the result pager unless --no-pager is set.\n\nPager keys: j/k or arrow keys move one line; d/u move half a page; / filters across every meeting field; G jumps to the end; q quits. Filtering keeps each full meeting table and highlights matching text.\n\nExamples:\n  alc meeting now\n  alc meeting now --type online --limit 10\n  alc meeting now --type in-person --from \"10001\"\n  alc meeting now --no-pager"
+        after_help = "By default, all active access types are included. Times use America/New_York. In-progress meetings show how long ago they started. In `now`, they are limited to meetings started within the last 30 minutes. Meetings beginning within the next hour are also included. Interactive terminals open the result pager unless --no-pager is set.\n\nPager keys: j/k or arrow keys move one line; d/u move half a page; / filters across every meeting field; G jumps to the end; r resets the original view; q quits. Access shortcuts: a shows all; h selects hybrid; p selects in-person; o selects online. Online and in-person include hybrid meetings. Filtering keeps each full meeting table and highlights matching text. While editing a filter, shortcut letters are search text, Ctrl+U clears the filter, and Backspace on an empty filter exits editing.\n\nExamples:\n  alc meeting now\n  alc meeting now --type online --limit 10\n  alc meeting now --type in-person --from \"10001\"\n  alc meeting now --no-pager"
     )]
     Now(MeetingNowArgs),
     /// Search and filter the complete meeting directory.
     #[command(
-        after_help = "With no filters, searches all active meetings. Online-capable meetings appear first. Interactive terminals open the result pager unless --no-pager is set.\n\nPager keys: j/k or arrow keys move one line; d/u move half a page; / filters across every meeting field; G jumps to the end; q quits. Filtering keeps each full meeting table and highlights matching text.\n\nExamples:\n  alc meeting find\n  alc meeting find \"turning point\"\n  alc meeting find --weekday sunday --time morning --type online\n  alc meeting find --region brooklyn --type in-person --limit 10\n  alc meeting find --no-pager"
+        after_help = "With no filters, searches all active meetings. Online-capable meetings appear first. In-progress meetings show how long ago they started. Interactive terminals open the result pager unless --no-pager is set.\n\nPager keys: j/k or arrow keys move one line; d/u move half a page; / filters across every meeting field; G jumps to the end; r resets the original view; q quits. Access shortcuts: a shows all; h selects hybrid; p selects in-person; o selects online. Online and in-person include hybrid meetings. Filtering keeps each full meeting table and highlights matching text. While editing a filter, shortcut letters are search text, Ctrl+U clears the filter, and Backspace on an empty filter exits editing.\n\nExamples:\n  alc meeting find\n  alc meeting find \"turning point\"\n  alc meeting find --weekday sunday --time morning --type online\n  alc meeting find --region brooklyn --type in-person --limit 10\n  alc meeting find --no-pager"
     )]
     Find(MeetingFindArgs),
+    /// List meetings scheduled today.
+    Today(MeetingScheduleArgs),
+    /// List meetings scheduled tomorrow.
+    Tomorrow(MeetingScheduleArgs),
+    /// List meetings across the next seven days.
+    Week(MeetingScheduleArgs),
+    /// List Sunday meetings.
+    Sunday(MeetingScheduleArgs),
+    /// List Monday meetings.
+    Monday(MeetingScheduleArgs),
+    /// List Tuesday meetings.
+    Tuesday(MeetingScheduleArgs),
+    /// List Wednesday meetings.
+    Wednesday(MeetingScheduleArgs),
+    /// List Thursday meetings.
+    Thursday(MeetingScheduleArgs),
+    /// List Friday meetings.
+    Friday(MeetingScheduleArgs),
+    /// List Saturday meetings.
+    Saturday(MeetingScheduleArgs),
+    /// List this morning's meetings.
+    Morning(MeetingScheduleArgs),
+    /// List this afternoon's meetings.
+    Afternoon(MeetingScheduleArgs),
+    /// List tonight's meetings.
+    #[command(visible_alias = "evening")]
+    Night(MeetingScheduleArgs),
 }
 
 #[derive(Args)]
@@ -118,10 +149,12 @@ pub enum Request {
 /// A meeting-directory action.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MeetingRequest {
-    /// Find meetings in progress or starting soon.
+    /// Find recently started meetings or meetings starting soon.
     Now(MeetingNow),
     /// Search the directory with explicit filters.
     Find(MeetingFilters),
+    /// List meetings using composable date and time-of-day shortcuts.
+    Schedule(MeetingSchedule),
 }
 
 /// Options for a meeting-now query.
@@ -330,6 +363,13 @@ impl fmt::Display for Request {
         match self {
             Self::Meeting(MeetingRequest::Now(_)) => formatter.write_str("meeting:now"),
             Self::Meeting(MeetingRequest::Find(_)) => formatter.write_str("meeting:find"),
+            Self::Meeting(MeetingRequest::Schedule(options)) => {
+                write!(formatter, "meeting:schedule:{}", options.day())?;
+                if let Some(time) = options.time() {
+                    write!(formatter, ":{time}")?;
+                }
+                Ok(())
+            }
             Self::DailyReflection(date) => write!(formatter, "daily-reflection:{date}"),
         }
     }
@@ -344,7 +384,9 @@ pub fn command() -> Command {
 /// Builds the complete command-line interface with an explicit terminal theme.
 #[must_use]
 pub fn command_with_theme(theme: Theme) -> Command {
-    Cli::command()
+    let mut command = Cli::command();
+    schedule::add_help(&mut command);
+    command
         .styles(theme.clap_styles())
         .color(theme.clap_color_choice())
 }
@@ -368,11 +410,11 @@ where
     T: Into<OsString> + Clone,
     F: FnOnce() -> NaiveDate,
 {
-    let matches = command().try_get_matches_from(args)?;
+    let matches = command().try_get_matches_from(schedule::normalize_this_week_alias(args))?;
     let cli = Cli::from_arg_matches(&matches)?;
 
     match cli.command {
-        CliCommand::Meeting { command } => Ok(Request::Meeting(parse_meeting_command(command))),
+        CliCommand::Meeting { command } => parse_meeting_command(command).map(Request::Meeting),
         CliCommand::DailyReflection { date } => {
             let today = today();
             let date = match date {
@@ -385,21 +427,21 @@ where
     }
 }
 
-fn parse_meeting_command(command: Option<MeetingCommand>) -> MeetingRequest {
+fn parse_meeting_command(command: Option<MeetingCommand>) -> Result<MeetingRequest, clap::Error> {
     match command {
-        None => MeetingRequest::Now(MeetingNow {
+        None => Ok(MeetingRequest::Now(MeetingNow {
             attendance: None,
             limit: 20,
             origin: None,
             pager_enabled: true,
-        }),
-        Some(MeetingCommand::Now(args)) => MeetingRequest::Now(MeetingNow {
+        })),
+        Some(MeetingCommand::Now(args)) => Ok(MeetingRequest::Now(MeetingNow {
             attendance: args.attendance,
             limit: usize::from(args.results.limit),
             origin: args.results.origin,
             pager_enabled: !args.results.no_pager,
-        }),
-        Some(MeetingCommand::Find(args)) => MeetingRequest::Find(MeetingFilters {
+        })),
+        Some(MeetingCommand::Find(args)) => Ok(MeetingRequest::Find(MeetingFilters {
             query: args.query,
             weekday: args.weekday,
             time: args.time,
@@ -408,6 +450,28 @@ fn parse_meeting_command(command: Option<MeetingCommand>) -> MeetingRequest {
             limit: usize::from(args.results.limit),
             origin: args.results.origin,
             pager_enabled: !args.results.no_pager,
-        }),
+        })),
+        Some(MeetingCommand::Today(args)) => parse_schedule(MeetingShortcut::Today, args),
+        Some(MeetingCommand::Tomorrow(args)) => parse_schedule(MeetingShortcut::Tomorrow, args),
+        Some(MeetingCommand::Week(args)) => parse_schedule(MeetingShortcut::Week, args),
+        Some(MeetingCommand::Sunday(args)) => parse_schedule(MeetingShortcut::Sunday, args),
+        Some(MeetingCommand::Monday(args)) => parse_schedule(MeetingShortcut::Monday, args),
+        Some(MeetingCommand::Tuesday(args)) => parse_schedule(MeetingShortcut::Tuesday, args),
+        Some(MeetingCommand::Wednesday(args)) => parse_schedule(MeetingShortcut::Wednesday, args),
+        Some(MeetingCommand::Thursday(args)) => parse_schedule(MeetingShortcut::Thursday, args),
+        Some(MeetingCommand::Friday(args)) => parse_schedule(MeetingShortcut::Friday, args),
+        Some(MeetingCommand::Saturday(args)) => parse_schedule(MeetingShortcut::Saturday, args),
+        Some(MeetingCommand::Morning(args)) => parse_schedule(MeetingShortcut::Morning, args),
+        Some(MeetingCommand::Afternoon(args)) => parse_schedule(MeetingShortcut::Afternoon, args),
+        Some(MeetingCommand::Night(args)) => parse_schedule(MeetingShortcut::Night, args),
     }
+}
+
+fn parse_schedule(
+    first: MeetingShortcut,
+    args: MeetingScheduleArgs,
+) -> Result<MeetingRequest, clap::Error> {
+    schedule::parse(first, args)
+        .map(MeetingRequest::Schedule)
+        .map_err(|message| command().error(ErrorKind::ArgumentConflict, message))
 }

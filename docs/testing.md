@@ -6,21 +6,35 @@ green refactor pass.
 
 Pure integration tests cover typed command parsing, meeting normalization,
 case-insensitive filters, hybrid access semantics, online-first ranking,
-current weekly time calculations, HTML-entity normalization, direction URL
-generation, complete table rendering, Unicode display-width alignment, and
-semantic terminal styles.
+current weekly time calculations, the inclusive 30-minute `now` cutoff,
+order-independent schedule shorthand parsing, relative day and time filtering,
+HTML-entity normalization, direction URL generation, complete table rendering,
+Unicode display-width alignment, and semantic terminal styles.
 
-Compiled-CLI tests exercise help at every command level, including examples and
-implicit defaults. A lazy clock test proves help resolution does not request a
-date. Theme tests cover all semantic roles, dark-terminal contrast, plain output,
-and the independent terminal and `NO_COLOR` gates.
+Compiled-CLI tests exercise help at every command level, including every
+schedule shortcut, aliases, examples, implicit defaults, and the shared pager
+controls on every meeting-list command. A lazy clock test proves help
+resolution does not request a date. Theme tests cover all semantic roles,
+dark-terminal contrast, plain output, and the independent terminal and
+`NO_COLOR` gates.
 
 Pager unit tests cover line and half-page movement, viewport clamping, jump to
-start and end, quit behavior, live search editing, and less-like key mapping.
+start and end, quit behavior, live search editing, Ctrl+U query clearing,
+empty-query Backspace exit, access shortcuts, combined access and text filters,
+complete view reset, and less-like key mapping. Reset coverage proves that the
+query, access filter, editing mode, and scroll offset all return to their
+initial values.
 Pure frame tests prove that a filter searches every field, retains the complete
 matching meeting table, removes nonmatching meetings, and highlights every
 case-insensitive match. TTY gating tests prove that direct output remains the
 fallback when paging is disabled or either stream is not interactive.
+
+Meeting rendering tests verify inline bold access badges with their semantic
+colors, the absence of a separate Access row, primary schedule emphasis, bold
+uppercase in-progress status, exact elapsed minutes, non-bold red elapsed-time
+styling in both `now` and `find` output, bold yellow upcoming timing, and the
+inclusive 135-minute boundary. A meeting 136 minutes away proves the upcoming
+label does not leak beyond that boundary.
 
 Local TCP servers exercise the real synchronous HTTP client. Meeting tests
 serve both a synthetic HTML page and its advertised synthetic JSON feed. They

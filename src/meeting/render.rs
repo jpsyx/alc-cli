@@ -1,16 +1,18 @@
-use chrono::{NaiveTime, Timelike};
+use chrono::{DateTime, NaiveTime, Timelike};
+use chrono_tz::Tz;
 use url::Url;
 
 use crate::theme::Theme;
 
 use super::{
     model::{Access, Meeting},
-    query::{Availability, AvailableMeeting},
+    query::{Availability, AvailableMeeting, availability_within},
     table::{border, case_insensitive_match_ranges, contains_case_insensitive, pad, wrap_text},
 };
 
 const TABLE_WIDTH: usize = 120;
 const LABEL_WIDTH: usize = 14;
+const RELATIVE_TIME_HORIZON_MINUTES: i64 = 135;
 
 /// Creates a Google Maps directions URL for an in-person meeting.
 #[must_use]
@@ -42,7 +44,34 @@ pub fn render_find(meetings: &[&Meeting], origin: Option<&str>, theme: Theme) ->
     find_list(meetings, origin).render_filtered("", TABLE_WIDTH, theme)
 }
 
+/// Renders filtered meetings with current relative timing for human-readable output.
+#[must_use]
+pub fn render_find_at(
+    meetings: &[&Meeting],
+    origin: Option<&str>,
+    at: DateTime<Tz>,
+    theme: Theme,
+) -> String {
+    find_list_at(meetings, origin, &at).render_filtered("", TABLE_WIDTH, theme)
+}
+
 pub(super) fn find_list(meetings: &[&Meeting], origin: Option<&str>) -> MeetingList {
+    find_list_with_time(meetings, origin, None)
+}
+
+pub(super) fn find_list_at(
+    meetings: &[&Meeting],
+    origin: Option<&str>,
+    at: &DateTime<Tz>,
+) -> MeetingList {
+    find_list_with_time(meetings, origin, Some(at))
+}
+
+fn find_list_with_time(
+    meetings: &[&Meeting],
+    origin: Option<&str>,
+    at: Option<&DateTime<Tz>>,
+) -> MeetingList {
     let noun = if meetings.len() == 1 {
         "meeting"
     } else {
@@ -53,7 +82,11 @@ pub(super) fn find_list(meetings: &[&Meeting], origin: Option<&str>) -> MeetingL
         empty: "No meetings found. Try broader filters.".to_owned(),
         tables: meetings
             .iter()
-            .map(|meeting| meeting_table(meeting, None, origin))
+            .map(|meeting| {
+                let availability = at
+                    .and_then(|at| availability_within(meeting, at, RELATIVE_TIME_HORIZON_MINUTES));
+                meeting_table(meeting, availability, origin)
+            })
             .collect(),
     }
 }
@@ -72,7 +105,8 @@ pub(super) fn now_list(meetings: &[AvailableMeeting<'_>], origin: Option<&str>) 
     };
     MeetingList {
         heading: format!("{} {noun} available now (New York time).", meetings.len()),
-        empty: "No meetings are in progress or starting within the next hour.".to_owned(),
+        empty: "No meetings started within the last 30 minutes or begin within the next hour."
+            .to_owned(),
         tables: meetings
             .iter()
             .map(|item| meeting_table(item.meeting, Some(item.availability), origin))
@@ -86,24 +120,64 @@ pub(super) struct MeetingList {
     tables: Vec<MeetingTable>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum AccessFilter {
+    #[default]
+    All,
+    Hybrid,
+    InPerson,
+    Online,
+}
+
+impl AccessFilter {
+    const fn matches(self, access: Access) -> bool {
+        match self {
+            Self::All => true,
+            Self::Hybrid => matches!(access, Access::Hybrid),
+            Self::InPerson => matches!(access, Access::InPerson | Access::Hybrid),
+            Self::Online => matches!(access, Access::Online | Access::Hybrid),
+        }
+    }
+
+    pub(super) const fn label(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Hybrid => "hybrid",
+            Self::InPerson => "in-person",
+            Self::Online => "online",
+        }
+    }
+}
+
 impl MeetingList {
+    #[cfg(test)]
     fn matching(&self, query: &str) -> Vec<&MeetingTable> {
+        self.matching_filtered(query, AccessFilter::All)
+    }
+
+    fn matching_filtered(&self, query: &str, access_filter: AccessFilter) -> Vec<&MeetingTable> {
         self.tables
             .iter()
-            .filter(|table| table.matches(query))
+            .filter(|table| access_filter.matches(table.access) && table.matches(query))
             .collect()
     }
 
-    pub(super) fn matching_count(&self, query: &str) -> usize {
-        self.matching(query).len()
+    pub(super) fn matching_count(&self, query: &str, access_filter: AccessFilter) -> usize {
+        self.matching_filtered(query, access_filter).len()
     }
 
     pub(super) fn total_count(&self) -> usize {
         self.tables.len()
     }
 
-    pub(super) fn rendered_lines(&self, query: &str, width: usize, theme: Theme) -> Vec<String> {
-        self.render_filtered(query, width, theme)
+    pub(super) fn rendered_lines(
+        &self,
+        query: &str,
+        access_filter: AccessFilter,
+        width: usize,
+        theme: Theme,
+    ) -> Vec<String> {
+        self.render_with_filters(query, access_filter, width, theme)
             .lines()
             .map(str::to_owned)
             .collect()
@@ -114,12 +188,27 @@ impl MeetingList {
     }
 
     fn render_filtered(&self, query: &str, width: usize, theme: Theme) -> String {
-        let matching = self.matching(query);
+        self.render_with_filters(query, AccessFilter::All, width, theme)
+    }
+
+    fn render_with_filters(
+        &self,
+        query: &str,
+        access_filter: AccessFilter,
+        width: usize,
+        theme: Theme,
+    ) -> String {
+        let matching = self.matching_filtered(query, access_filter);
         if matching.is_empty() {
-            let message = if query.is_empty() {
-                self.empty.clone()
-            } else {
-                format!("No meetings match \"{query}\".")
+            let message = match (query.is_empty(), access_filter) {
+                (true, AccessFilter::All) => self.empty.clone(),
+                (true, access_filter) => {
+                    format!("No meetings have {} access.", access_filter.label())
+                }
+                (false, AccessFilter::All) => format!("No meetings match \"{query}\"."),
+                (false, access_filter) => {
+                    format!("No {} meetings match \"{query}\".", access_filter.label())
+                }
             };
             let message = wrap_text(&message, width)
                 .iter()
@@ -129,14 +218,25 @@ impl MeetingList {
             return format!("{message}\n");
         }
 
-        let heading = if query.is_empty() {
-            self.heading.clone()
-        } else {
-            format!(
+        let heading = match (query.is_empty(), access_filter) {
+            (true, AccessFilter::All) => self.heading.clone(),
+            (true, access_filter) => format!(
+                "{} of {} meetings have {} access.",
+                matching.len(),
+                self.tables.len(),
+                access_filter.label()
+            ),
+            (false, AccessFilter::All) => format!(
                 "{} of {} meetings match \"{query}\".",
                 matching.len(),
                 self.tables.len()
-            )
+            ),
+            (false, access_filter) => format!(
+                "{} of {} {} meetings match \"{query}\".",
+                matching.len(),
+                self.tables.len(),
+                access_filter.label()
+            ),
         };
         let heading = wrap_text(&heading, width)
             .iter()
@@ -152,6 +252,7 @@ impl MeetingList {
 }
 
 struct MeetingTable {
+    access: Access,
     fields: Vec<MeetingField>,
 }
 
@@ -182,13 +283,34 @@ impl MeetingTable {
                     .map_or(value_cursor, |start| value_cursor + start);
                 let value_end = value_start + value.len();
                 let line_matches = intersecting_ranges(&matches, value_start, value_end);
+                let line_time_soon = field
+                    .time_soon
+                    .as_ref()
+                    .and_then(|range| intersecting_range(range, value_start, value_end));
+                let line_time_started = field
+                    .time_started
+                    .as_ref()
+                    .and_then(|range| intersecting_range(range, value_start, value_end));
+                let line_access_badge = field.access_badge.as_ref().and_then(|(range, access)| {
+                    intersecting_range(range, value_start, value_end).map(|range| (range, *access))
+                });
                 value_cursor = value_end;
                 lines.push(format!(
                     "{} {} {} {} {}",
                     theme.muted("│"),
                     highlight_matches(&pad(label, LABEL_WIDTH), query, FieldStyle::Label, theme),
                     theme.muted("│"),
-                    highlight_ranges(&pad(value, value_width), &line_matches, field.style, theme),
+                    highlight_ranges(
+                        &pad(value, value_width),
+                        &line_matches,
+                        line_time_soon.as_ref(),
+                        line_time_started.as_ref(),
+                        line_access_badge
+                            .as_ref()
+                            .map(|(range, access)| (range, *access)),
+                        field.style,
+                        theme
+                    ),
                     theme.muted("│")
                 ));
             }
@@ -206,21 +328,18 @@ fn meeting_table(
     availability: Option<Availability>,
     origin: Option<&str>,
 ) -> MeetingTable {
+    let schedule = format!(
+        "{} {} to {}",
+        weekday_name(meeting.day),
+        format_clock(meeting.start),
+        format_clock(meeting.end)
+    );
     let mut fields = vec![
-        MeetingField::primary("Meeting", &meeting.name),
-        MeetingField::access("Access", access_label(meeting), meeting.access),
-        MeetingField::secondary(
-            "Schedule",
-            format!(
-                "{} {} to {}",
-                weekday_name(meeting.day),
-                format_clock(meeting.start),
-                format_clock(meeting.end)
-            ),
-        ),
+        MeetingField::meeting("Meeting", &meeting.name, meeting.access),
+        MeetingField::schedule("Schedule", schedule, availability),
     ];
-    if let Some(availability) = availability {
-        fields.push(MeetingField::status("Status", availability.to_string()));
+    if let Some(Availability::InProgress(minutes)) = availability {
+        fields.push(MeetingField::in_progress("Status", minutes));
     }
     if let Some(group) = meeting
         .group
@@ -263,16 +382,38 @@ fn meeting_table(
     }
     fields.push(MeetingField::primary("Source", &meeting.source_url));
 
-    MeetingTable { fields }
+    MeetingTable {
+        access: meeting.access,
+        fields,
+    }
 }
 
 struct MeetingField {
     label: &'static str,
     value: String,
     style: FieldStyle,
+    time_soon: Option<std::ops::Range<usize>>,
+    time_started: Option<std::ops::Range<usize>>,
+    access_badge: Option<(std::ops::Range<usize>, Access)>,
 }
 
 impl MeetingField {
+    fn meeting(label: &'static str, name: &str, access: Access) -> Self {
+        let name = one_line(name);
+        let badge = format!("[{}]", access_label(access));
+        let start = name.len() + 1;
+        let value = format!("{name} {badge}");
+        let end = value.len();
+        Self {
+            label,
+            value,
+            style: FieldStyle::Primary,
+            time_soon: None,
+            time_started: None,
+            access_badge: Some((start..end, access)),
+        }
+    }
+
     fn primary(label: &'static str, value: impl Into<String>) -> Self {
         Self::styled(label, value, FieldStyle::Primary)
     }
@@ -281,12 +422,38 @@ impl MeetingField {
         Self::styled(label, value, FieldStyle::Secondary)
     }
 
-    fn access(label: &'static str, value: impl Into<String>, access: Access) -> Self {
-        Self::styled(label, value, FieldStyle::Access(access))
+    fn schedule(label: &'static str, value: String, availability: Option<Availability>) -> Self {
+        let Some(Availability::StartsIn(minutes)) = availability else {
+            return Self::styled(label, value, FieldStyle::Primary);
+        };
+        let relative = relative_time(minutes);
+        let start = value.len() + 1;
+        let value = format!("{value} {relative}");
+        let end = value.len();
+        Self {
+            label,
+            value,
+            style: FieldStyle::Primary,
+            time_soon: Some(start..end),
+            time_started: None,
+            access_badge: None,
+        }
     }
 
-    fn status(label: &'static str, value: impl Into<String>) -> Self {
-        Self::styled(label, value, FieldStyle::Status)
+    fn in_progress(label: &'static str, minutes: i64) -> Self {
+        let status = "IN PROGRESS";
+        let relative = started_time(minutes);
+        let start = status.len() + 1;
+        let value = format!("{status} {relative}");
+        let end = value.len();
+        Self {
+            label,
+            value,
+            style: FieldStyle::InProgress,
+            time_soon: None,
+            time_started: Some(start..end),
+            access_badge: None,
+        }
     }
 
     fn styled(label: &'static str, value: impl Into<String>, style: FieldStyle) -> Self {
@@ -295,6 +462,9 @@ impl MeetingField {
             label,
             value: one_line(&value),
             style,
+            time_soon: None,
+            time_started: None,
+            access_badge: None,
         }
     }
 }
@@ -304,18 +474,48 @@ enum FieldStyle {
     Label,
     Primary,
     Secondary,
-    Access(Access),
-    Status,
+    InProgress,
 }
 
 fn style_value(value: &str, style: FieldStyle, theme: Theme) -> String {
     match style {
-        FieldStyle::Label | FieldStyle::Access(Access::InPerson) => theme.accent(value),
+        FieldStyle::Label => theme.accent(value),
         FieldStyle::Primary => theme.value(value),
-        FieldStyle::Secondary | FieldStyle::Access(Access::Inactive) => theme.muted(value),
-        FieldStyle::Access(Access::Online) | FieldStyle::Status => theme.success(value),
-        FieldStyle::Access(Access::Hybrid) => theme.info(value),
+        FieldStyle::Secondary => theme.muted(value),
+        FieldStyle::InProgress => theme.in_progress(value),
     }
+}
+
+fn style_access_badge(value: &str, access: Access, theme: Theme) -> String {
+    match access {
+        Access::Online => theme.access_online(value),
+        Access::Hybrid => theme.access_hybrid(value),
+        Access::InPerson => theme.access_in_person(value),
+        Access::Inactive => theme.muted(value),
+    }
+}
+
+fn duration_words(minutes: i64) -> String {
+    let hours = minutes / 60;
+    let minutes = minutes % 60;
+    let mut parts = Vec::new();
+    if hours > 0 {
+        let noun = if hours == 1 { "hour" } else { "hours" };
+        parts.push(format!("{hours} {noun}"));
+    }
+    if minutes > 0 || parts.is_empty() {
+        let noun = if minutes == 1 { "minute" } else { "minutes" };
+        parts.push(format!("{minutes} {noun}"));
+    }
+    parts.join(" ")
+}
+
+fn relative_time(minutes: i64) -> String {
+    format!("[In {}]", duration_words(minutes))
+}
+
+fn started_time(minutes: i64) -> String {
+    format!("[Started {} ago]", duration_words(minutes))
 }
 
 fn highlight_matches(value: &str, query: &str, style: FieldStyle, theme: Theme) -> String {
@@ -324,27 +524,61 @@ fn highlight_matches(value: &str, query: &str, style: FieldStyle, theme: Theme) 
     }
 
     let ranges = case_insensitive_match_ranges(value, query);
-    highlight_ranges(value, &ranges, style, theme)
+    highlight_ranges(value, &ranges, None, None, None, style, theme)
 }
 
 fn highlight_ranges(
     value: &str,
     ranges: &[std::ops::Range<usize>],
+    time_soon: Option<&std::ops::Range<usize>>,
+    time_started: Option<&std::ops::Range<usize>>,
+    access_badge: Option<(&std::ops::Range<usize>, Access)>,
     style: FieldStyle,
     theme: Theme,
 ) -> String {
-    if ranges.is_empty() {
+    if ranges.is_empty() && time_soon.is_none() && time_started.is_none() && access_badge.is_none()
+    {
         return style_value(value, style, theme);
     }
 
-    let mut rendered = String::new();
-    let mut cursor = 0;
+    let mut boundaries = vec![0, value.len()];
     for range in ranges {
-        rendered.push_str(&style_value(&value[cursor..range.start], style, theme));
-        rendered.push_str(&theme.matched(&value[range.clone()]));
-        cursor = range.end;
+        boundaries.extend([range.start, range.end]);
     }
-    rendered.push_str(&style_value(&value[cursor..], style, theme));
+    if let Some(range) = time_soon {
+        boundaries.extend([range.start, range.end]);
+    }
+    if let Some(range) = time_started {
+        boundaries.extend([range.start, range.end]);
+    }
+    if let Some((range, _)) = access_badge {
+        boundaries.extend([range.start, range.end]);
+    }
+    boundaries.sort_unstable();
+    boundaries.dedup();
+
+    let mut rendered = String::new();
+    for segment in boundaries.windows(2) {
+        let start = segment[0];
+        let end = segment[1];
+        let value = &value[start..end];
+        if ranges
+            .iter()
+            .any(|range| range.start <= start && start < range.end)
+        {
+            rendered.push_str(&theme.matched(value));
+        } else if time_soon.is_some_and(|range| range.start <= start && start < range.end) {
+            rendered.push_str(&theme.time_soon(value));
+        } else if time_started.is_some_and(|range| range.start <= start && start < range.end) {
+            rendered.push_str(&theme.time_started(value));
+        } else if let Some((_, access)) =
+            access_badge.filter(|(range, _)| range.start <= start && start < range.end)
+        {
+            rendered.push_str(&style_access_badge(value, access, theme));
+        } else {
+            rendered.push_str(&style_value(value, style, theme));
+        }
+    }
     rendered
 }
 
@@ -363,8 +597,18 @@ fn intersecting_ranges(
         .collect()
 }
 
-const fn access_label(meeting: &Meeting) -> &'static str {
-    match meeting.access {
+fn intersecting_range(
+    range: &std::ops::Range<usize>,
+    line_start: usize,
+    line_end: usize,
+) -> Option<std::ops::Range<usize>> {
+    let start = range.start.max(line_start);
+    let end = range.end.min(line_end);
+    (start < end).then_some(start - line_start..end - line_start)
+}
+
+const fn access_label(access: Access) -> &'static str {
+    match access {
         Access::Online => "Online",
         Access::InPerson => "In person",
         Access::Hybrid => "Hybrid",
@@ -447,6 +691,7 @@ mod tests {
     #[test]
     fn tables_preserve_terminal_width_for_wide_characters() {
         let table = MeetingTable {
+            access: Access::Online,
             fields: vec![MeetingField::primary("Meeting", "東 Village Group")],
         };
 
@@ -462,6 +707,7 @@ mod tests {
     #[test]
     fn highlighting_survives_a_table_line_wrap() {
         let table = MeetingTable {
+            access: Access::Online,
             fields: vec![MeetingField::primary("Meeting", "alpha beta")],
         };
 
@@ -477,11 +723,11 @@ mod tests {
             empty: "No meetings found".to_owned(),
             tables: vec![
                 MeetingTable {
+                    access: Access::Hybrid,
                     fields: vec![
-                        MeetingField::primary("Meeting", "Harbor Light"),
-                        MeetingField::access("Access", "Hybrid", Access::Hybrid),
+                        MeetingField::meeting("Meeting", "Harbor Light", Access::Hybrid),
                         MeetingField::secondary("Schedule", "Sunday 9:00 AM to 10:00 AM"),
-                        MeetingField::status("Status", "in progress"),
+                        MeetingField::in_progress("Status", 15),
                         MeetingField::primary("Address", "10 Water St, Brooklyn"),
                         MeetingField::primary("Join", "https://zoom.example.test/harbor"),
                         MeetingField::primary("Phone", "212-555-0100"),
@@ -490,9 +736,9 @@ mod tests {
                     ],
                 },
                 MeetingTable {
+                    access: Access::Online,
                     fields: vec![
-                        MeetingField::primary("Meeting", "Uptown Noon"),
-                        MeetingField::access("Access", "Online", Access::Online),
+                        MeetingField::meeting("Meeting", "Uptown Noon", Access::Online),
                         MeetingField::secondary("Schedule", "Monday 12:00 PM to 1:00 PM"),
                     ],
                 },

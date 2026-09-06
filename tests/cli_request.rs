@@ -21,6 +21,108 @@ fn explicit_meeting_now_requests_current_meetings() {
 }
 
 #[test]
+fn meeting_schedule_shortcuts_parse_as_schedule_requests() {
+    for shortcut in [
+        "today",
+        "tomorrow",
+        "week",
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "morning",
+        "afternoon",
+        "night",
+        "evening",
+    ] {
+        let request = parse_request(["alc", "meeting", shortcut], today())
+            .unwrap_or_else(|error| panic!("{shortcut} should parse: {error}"));
+
+        assert!(matches!(
+            request,
+            Request::Meeting(MeetingRequest::Schedule(_))
+        ));
+    }
+}
+
+#[test]
+fn meeting_schedule_filters_are_order_independent() {
+    let day_first = parse_request(["alc", "meeting", "tomorrow", "night"], today())
+        .expect("day-first schedule should parse");
+    let time_first = parse_request(["alc", "meeting", "evening", "tomorrow"], today())
+        .expect("time-first schedule should parse");
+
+    assert_eq!(day_first, time_first);
+    let Request::Meeting(MeetingRequest::Schedule(options)) = day_first else {
+        panic!("expected schedule options");
+    };
+    assert_eq!(options.day().to_string(), "tomorrow");
+    assert_eq!(
+        options.time().map(|value| value.to_string()).as_deref(),
+        Some("night")
+    );
+}
+
+#[test]
+fn this_week_alias_combines_in_either_order() {
+    let canonical = parse_request(["alc", "meeting", "week", "morning"], today())
+        .expect("canonical week should parse");
+    let week_first = parse_request(["alc", "meeting", "this", "week", "morning"], today())
+        .expect("two-word week alias should parse");
+    let time_first = parse_request(["alc", "meeting", "morning", "this", "week"], today())
+        .expect("reversed two-word week alias should parse");
+
+    assert_eq!(canonical, week_first);
+    assert_eq!(canonical, time_first);
+}
+
+#[test]
+fn schedule_shortcuts_accept_shared_meeting_filters() {
+    let request = parse_request(
+        [
+            "alc",
+            "meeting",
+            "tuesday",
+            "afternoon",
+            "--type",
+            "online",
+            "--region",
+            "brooklyn",
+            "--limit",
+            "5",
+            "--from",
+            "10001",
+            "--no-pager",
+        ],
+        today(),
+    )
+    .expect("schedule filters should parse");
+
+    let Request::Meeting(MeetingRequest::Schedule(options)) = request else {
+        panic!("expected schedule options");
+    };
+    assert_eq!(options.day().to_string(), "tuesday");
+    assert_eq!(
+        options.time().map(|value| value.to_string()).as_deref(),
+        Some("afternoon")
+    );
+    assert_eq!(
+        options
+            .attendance()
+            .map(|value| value.to_string())
+            .as_deref(),
+        Some("online")
+    );
+    assert_eq!(options.region(), Some("brooklyn"));
+    assert_eq!(options.limit(), 5);
+    assert_eq!(options.origin(), Some("10001"));
+    assert!(!options.pager_enabled());
+}
+
+#[test]
 fn meeting_find_accepts_basic_directory_filters() {
     let request = parse_request(
         [

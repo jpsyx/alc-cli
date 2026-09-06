@@ -6,6 +6,8 @@ The crate is organized by user workflow:
 
 - `src/lib.rs` defines the nested Clap command tree and converts arguments into
   typed meeting or reflection requests;
+- `src/schedule.rs` owns composable date and time shortcut arguments,
+  normalization, validation, typed schedule options, and shared shortcut help;
 - `src/meeting/` discovers NYIG's current structured feed, caches its raw
   directory response, validates and normalizes records, filters and ranks
   meetings, calculates current availability, builds Google Maps URLs, and
@@ -48,6 +50,11 @@ Clap command metadata defines summaries, usage, parameters, defaults, aliases,
 and examples at every command level. Parsing obtains help, version, and usage
 errors from the themed command builder. The current-date callback is lazy, so
 help and meeting requests do not read the local date clock during parsing.
+Schedule shorthand commands become a typed `MeetingSchedule`; the process
+shell resolves its relative day against the single captured New York time.
+Before Clap parsing, adjacent `this week` tokens normalize to the canonical
+`week` shortcut. The first shorthand is a command and later shorthands are typed
+positional filters, allowing date and time to appear in either order.
 
 `Theme::active()` combines a fixed dark-terminal semantic palette with two
 color gates: stderr must be a terminal and `NO_COLOR` must be absent. The same
@@ -57,15 +64,25 @@ exact style assertions.
 
 All meeting-list commands construct the same `MeetingList` of `MeetingTable`
 values. That model owns field selection, ordering, wrapping, styling, and
-whole-record matching. Direct output renders it at a stable width. Interactive
+whole-record matching. It renders access as an inline semantic range in the
+Meeting value, letting the renderer apply the correct bold access-badge color
+without creating a separate row. It also records each table's access capability
+so the pager can apply its access filter without re-querying or partially
+rendering a record. Direct output renders it at a stable width. Interactive
 output gives it to the pager, which renders at the current terminal width and
 uses the same table code for every frame.
 
-The pager separates its pure `PagerState` navigation and search transitions
-from Crossterm IO. It opens only when enabled and both stdin and stdout are
-terminals. A small session guard restores raw mode, cursor visibility, and the
-previous screen on normal exit or an error. Nonterminal output and
-`--no-pager` bypass terminal control entirely.
+The pager separates its pure `PagerState` navigation, text query, and access
+filter transitions from Crossterm IO. Filter editing maps Ctrl+U to a complete
+query clear and maps Backspace on an empty query back to navigation. Access
+shortcuts use the same capability semantics as command flags, so online and
+in-person selections include hybrids. Reset replaces the transient pager state
+with its default value while retaining the immutable `MeetingList` produced by
+the original command.
+It opens only when enabled and both stdin and stdout are terminals. A small
+session guard restores raw mode, cursor visibility, and the previous screen on
+normal exit or an error. Nonterminal output and `--no-pager` bypass terminal
+control entirely.
 
 No command currently has missing required data. Existing no-argument states
 already mean help, meetings available now, an unfiltered meeting search, or
@@ -96,10 +113,24 @@ the platform cache root for isolated integration tests.
 The parser validates required identity, weekday, and time fields before
 creating normalized meetings. It keeps online and physical capabilities
 separate so hybrid meetings retain both. Inactive entries are excluded by
-queries. Text matching, filter composition, the one-hour current-availability
-window, online-first ranking, table rendering, display-width wrapping,
-whole-meeting pager filtering, and match range discovery are pure operations
-over normalized records.
+queries. Text matching, filter composition, the 30-minute recent-start and
+one-hour upcoming windows, relative schedule selection, online-first ranking,
+table rendering, display-width wrapping, whole-meeting pager filtering, and
+match range discovery are pure operations over normalized records.
+
+The process shell captures the current New York time once per meeting command.
+The query module determines whether each meeting is in progress or begins
+within a supplied horizon. An in-progress availability retains the elapsed
+minutes since the scheduled start. Rendering uses a 135-minute inclusive
+horizon for relative schedule labels, while `meeting now` retains its separate
+60-minute upcoming horizon and excludes elapsed values above 30 minutes.
+Schedule shortcuts use a separate query path, so that exclusion cannot leak
+into `today`, weekday, week, or time-of-day results. Semantic inline ranges let
+schedule text remain a normal value. Only the upcoming suffix receives bold
+yellow emphasis, and only the elapsed suffix beside `IN PROGRESS` receives
+non-bold red emphasis.
+The same range pipeline styles each access badge and gives a live text match
+precedence over semantic timing and badge colors.
 
 `ALC_NYIG_URL` can point the process shell at a compatible meeting page. The
 integration suite combines this seam with an isolated cache root and a local
