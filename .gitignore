@@ -1,0 +1,18 @@
+# Rust build artifacts.
+/target/
+
+# Machine-local configuration.
+/config.toml
+
+# Local review notes.
+/.difit/
+
+# Agent development skills materialized from skills-lock.json.
+/.agents/
+/.windsurf/
+/.claude/skills/
+
+# Editor and operating-system files.
+.DS_Store
+*.swp
+
