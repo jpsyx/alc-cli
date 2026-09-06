@@ -1,16 +1,27 @@
 [package]
-name = "nyintergroup-cli"
-version = "0.1.0"
+name = "alc"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Find New York Inter-Group AA meetings from the terminal."
+description = "Find AA meetings and read Daily Reflections from the terminal."
 
 [[bin]]
-name = "nyintergroup"
+name = "alc"
 path = "src/main.rs"
 
 [dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono-tz = "0.10"
 clap = { version = "4", features = ["derive"] }
+crossterm = "0.29"
+html-escape = "0.2"
+scraper = { version = "0.27", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+url = "2"
+unicode-width = "0.2"
 
 [lints.rust]
 unsafe_code = "forbid"
@@ -26,4 +37,3 @@ missing_panics_doc = "allow"
 lto = "thin"
 codegen-units = 1
 strip = true
-

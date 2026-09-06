@@ -1,0 +1,174 @@
+use std::{cmp::Ordering, fmt};
+
+use chrono::{DateTime, Datelike, Timelike};
+use chrono_tz::Tz;
+
+use super::model::Meeting;
+use crate::{MeetingFilters, MeetingNow};
+
+const MINUTES_PER_DAY: i64 = 1_440;
+const MINUTES_PER_WEEK: i64 = 10_080;
+const NOW_HORIZON_MINUTES: i64 = 60;
+
+/// Filters the active directory and ranks online-capable meetings first.
+#[must_use]
+pub fn find<'a>(meetings: &'a [Meeting], filters: &MeetingFilters) -> Vec<&'a Meeting> {
+    let query = normalized(filters.query());
+    let region = normalized(filters.region());
+    let mut matches = meetings
+        .iter()
+        .filter(|meeting| meeting.is_active())
+        .filter(|meeting| {
+            filters.attendance().is_none_or(|attendance| {
+                attendance.matches(meeting.is_online(), meeting.is_in_person())
+            })
+        })
+        .filter(|meeting| {
+            filters
+                .weekday()
+                .is_none_or(|weekday| weekday.directory_index() == meeting.day)
+        })
+        .filter(|meeting| {
+            filters.time().is_none_or(|time| {
+                time.contains_minutes(meeting.start.num_seconds_from_midnight() / 60)
+            })
+        })
+        .filter(|meeting| {
+            query
+                .as_deref()
+                .is_none_or(|query| meeting.search_text().contains(query))
+        })
+        .filter(|meeting| {
+            region
+                .as_deref()
+                .is_none_or(|region| meeting.region_text().contains(region))
+        })
+        .collect::<Vec<_>>();
+
+    matches.sort_by(|left, right| meeting_order(left, right));
+    matches.truncate(filters.limit());
+    matches
+}
+
+/// A meeting returned by a current-availability query.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AvailableMeeting<'a> {
+    pub(super) meeting: &'a Meeting,
+    pub(super) availability: Availability,
+    minutes_until: i64,
+}
+
+impl<'a> AvailableMeeting<'a> {
+    /// Returns the matching meeting.
+    #[must_use]
+    pub const fn meeting(&self) -> &'a Meeting {
+        self.meeting
+    }
+
+    /// Returns whether the meeting is underway or how soon it starts.
+    #[must_use]
+    pub const fn availability(&self) -> Availability {
+        self.availability
+    }
+}
+
+/// Current timing for a meeting returned by [`now`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Availability {
+    /// The scheduled meeting is underway.
+    InProgress,
+    /// The meeting begins after the contained number of minutes.
+    StartsIn(i64),
+}
+
+impl fmt::Display for Availability {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InProgress => formatter.write_str("in progress"),
+            Self::StartsIn(0) => formatter.write_str("starts now"),
+            Self::StartsIn(minutes) => write!(formatter, "starts in {minutes}m"),
+        }
+    }
+}
+
+/// Finds meetings underway or starting within the next hour.
+#[must_use]
+pub fn now<'a>(
+    meetings: &'a [Meeting],
+    at: DateTime<Tz>,
+    options: &MeetingNow,
+) -> Vec<AvailableMeeting<'a>> {
+    let now_minutes = i64::from(at.weekday().num_days_from_sunday()) * MINUTES_PER_DAY
+        + i64::from(at.hour() * 60 + at.minute());
+    let mut matches = meetings
+        .iter()
+        .filter(|meeting| meeting.is_active())
+        .filter(|meeting| {
+            options.attendance().is_none_or(|attendance| {
+                attendance.matches(meeting.is_online(), meeting.is_in_person())
+            })
+        })
+        .filter_map(|meeting| available_meeting(meeting, now_minutes))
+        .collect::<Vec<_>>();
+
+    matches.sort_by(|left, right| {
+        online_rank(left.meeting)
+            .cmp(&online_rank(right.meeting))
+            .then_with(|| {
+                availability_rank(left.availability).cmp(&availability_rank(right.availability))
+            })
+            .then_with(|| left.minutes_until.cmp(&right.minutes_until))
+            .then_with(|| left.meeting.name.cmp(&right.meeting.name))
+    });
+    matches.truncate(options.limit());
+    matches
+}
+
+fn normalized(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_lowercase)
+}
+
+fn meeting_order(left: &Meeting, right: &Meeting) -> Ordering {
+    online_rank(left)
+        .cmp(&online_rank(right))
+        .then_with(|| left.day.cmp(&right.day))
+        .then_with(|| left.start.cmp(&right.start))
+        .then_with(|| left.name.cmp(&right.name))
+}
+
+const fn online_rank(meeting: &Meeting) -> u8 {
+    if meeting.is_online() { 0 } else { 1 }
+}
+
+const fn availability_rank(availability: Availability) -> u8 {
+    match availability {
+        Availability::InProgress => 0,
+        Availability::StartsIn(_) => 1,
+    }
+}
+
+fn available_meeting(meeting: &Meeting, now_minutes: i64) -> Option<AvailableMeeting<'_>> {
+    let start = i64::from(meeting.day) * MINUTES_PER_DAY + meeting.start_minutes();
+    let mut duration = meeting.end_minutes() - meeting.start_minutes();
+    if duration <= 0 {
+        duration += MINUTES_PER_DAY;
+    }
+    let elapsed = (now_minutes - start).rem_euclid(MINUTES_PER_WEEK);
+    if elapsed < duration {
+        return Some(AvailableMeeting {
+            meeting,
+            availability: Availability::InProgress,
+            minutes_until: 0,
+        });
+    }
+
+    let minutes_until = (start - now_minutes).rem_euclid(MINUTES_PER_WEEK);
+    (minutes_until <= NOW_HORIZON_MINUTES).then_some(AvailableMeeting {
+        meeting,
+        availability: Availability::StartsIn(minutes_until),
+        minutes_until,
+    })
+}

@@ -3,8 +3,36 @@
 # directory while forwarding all arguments.
 set -euo pipefail
 
+usage() {
+  printf '%s\n' \
+    'Find AA meetings and read Daily Reflections from the terminal.' \
+    '' \
+    'Usage:' \
+    '  ./run.sh <COMMAND>' \
+    '' \
+    'Commands:' \
+    '  meeting           Find New York Inter-Group meetings.' \
+    '  daily-reflection  Read an AA Daily Reflection. Alias: daily.' \
+    '' \
+    'Options:' \
+    '  -h, --help        Print help and exit.' \
+    '  -V, --version     Print the alc version.' \
+    '' \
+    'Examples:' \
+    '  ./run.sh meeting' \
+    '  ./run.sh meeting find --weekday sunday --type online' \
+    '  ./run.sh daily'
+}
+
+case "${1:-}" in
+  -h | --help)
+    usage
+    exit 0
+    ;;
+esac
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-BIN="$SCRIPT_DIR/target/release/nyintergroup"
+BIN="$SCRIPT_DIR/target/release/alc"
 MANIFEST="$SCRIPT_DIR/Cargo.toml"
 SRC_DIR="$SCRIPT_DIR/src"
 
@@ -16,9 +44,8 @@ elif [[ -n "$(find "$SRC_DIR" -name '*.rs' -newer "$BIN" -print -quit 2>/dev/nul
 fi
 
 if (( needs_build )); then
-  echo "Building nyintergroup CLI..." >&2
+  echo "● Building alc CLI..." >&2
   (cd "$SCRIPT_DIR" && cargo build --release) >&2
 fi
 
 exec "$BIN" "$@"
-
