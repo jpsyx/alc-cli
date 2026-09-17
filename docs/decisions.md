@@ -157,3 +157,21 @@ Filter editing follows familiar terminal input conventions: Ctrl+U clears the
 entire query without leaving editing, and Backspace on an already empty query
 returns to navigation. This gives both a fast restart and a one-key exit without
 overloading the printable navigation shortcuts used as search text.
+
+## 2026-09-17: Wrap Daily Reflection prose to an approximate measure
+
+Reflection paragraphs arrive as single long lines and previously filled the
+terminal's full width, which reads poorly. `alc daily` now wraps prose near 80
+columns.
+
+The limit is deliberately soft. A hard 80-column break moves a word down to
+save one or two columns and leaves a visibly short line behind, so the
+algorithm keeps a word whose line ends within five columns of the target, and
+keeps an even longer overrun when breaking would leave a line under 76 columns.
+Words are never split: a long word or URL overhangs rather than becoming
+unsearchable fragments. The reflection's source URL keeps its own line for the
+same reason.
+
+Wrapping lives in its own pure module rather than reusing the meeting table's
+hard-width `wrap_text`, because a table column must respect an exact width
+while prose should not.

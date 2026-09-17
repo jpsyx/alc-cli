@@ -36,6 +36,13 @@ styling in both `now` and `find` output, bold yellow upcoming timing, and the
 inclusive 135-minute boundary. A meeting 136 minutes away proves the upcoming
 label does not leak beyond that boundary.
 
+Soft-wrap tests pin each boundary of the prose measure: a line that ends
+inside the tolerance above 80 columns, a word moved down once it overruns the
+tolerance, the same word kept in place when moving it would leave a line under
+76 columns, an unbreakable long word, whitespace normalization, and display
+width rather than byte length. Reflection rendering tests assert the wrapped
+body lines and an unwrapped source URL.
+
 Local TCP servers exercise the real synchronous HTTP client. Meeting tests
 serve both a synthetic HTML page and its advertised synthetic JSON feed. They
 verify same-day cache reuse after the server stops, next-day refresh, malformed

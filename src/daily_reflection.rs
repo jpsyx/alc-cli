@@ -7,7 +7,7 @@ use scraper::{ElementRef, Html, Selector};
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::theme::Theme;
+use crate::{text_wrap::wrap_prose, theme::Theme};
 
 const SOURCE_BASE_URL: &str = "https://www.aa.org/daily-reflections";
 const API_BASE_URL: &str = "https://www.aa.org/api/reflections";
@@ -228,20 +228,36 @@ pub fn fetch_from(
 }
 
 /// Renders a Daily Reflection for human-readable terminal output.
+///
+/// Prose is soft-wrapped for comfortable reading. The source line is left
+/// intact so the URL stays selectable and clickable.
 #[must_use]
 pub fn render(reflection: &DailyReflection, theme: Theme) -> String {
     let heading = theme.heading(&format!("Daily Reflection | {}", reflection.date_label));
-    let title = theme.value(&reflection.title);
+    let title = wrapped(&reflection.title, |line| theme.value(line));
+    let body = reflection
+        .paragraphs
+        .iter()
+        .map(|paragraph| wrap_prose(paragraph).join("\n"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
     let source = format!(
         "{} {}",
         theme.accent("Source:"),
         theme.value(&reflection.source_url)
     );
-    format!(
-        "{heading}\n\n{title}\n\n{}\n\n{source}\n{}\n",
-        reflection.paragraphs.join("\n\n"),
-        theme.muted(&reflection.copyright)
-    )
+    let copyright = wrapped(&reflection.copyright, |line| theme.muted(line));
+    format!("{heading}\n\n{title}\n\n{body}\n\n{source}\n{copyright}\n")
+}
+
+/// Wraps text and styles each resulting line, so no escape sequence spans a
+/// line break.
+fn wrapped(text: &str, style: impl Fn(&str) -> String) -> String {
+    wrap_prose(text)
+        .iter()
+        .map(|line| style(line))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn parse_date(year: &str, month: &str, day: &str) -> Option<NaiveDate> {

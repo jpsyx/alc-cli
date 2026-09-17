@@ -175,6 +175,13 @@ Invalid calendar dates fail before a network request. Output contains the
 title, displayed date, body, official source URL, and AA World Services
 copyright attribution.
 
+Reflection prose is soft-wrapped near 80 columns. The limit is approximate:
+a word that ends no more than five columns past it stays on the line, and a
+word that would overrun further still stays when moving it down would leave a
+line shorter than 76 columns. Words are never split, so a long word simply
+overhangs. The source URL line is never wrapped, keeping the link selectable
+and clickable.
+
 ## Failure behavior
 
 Network, malformed-source, and schema failures print an error to stderr and
