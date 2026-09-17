@@ -8,7 +8,6 @@
 /.difit/
 
 # Agent development skills materialized from skills-lock.json.
-/.agents/
 /.windsurf/
 /.claude/skills/
 
