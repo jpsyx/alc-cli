@@ -241,3 +241,28 @@ fn both_meeting_lists_enable_the_pager_by_default() {
     assert!(now_options.pager_enabled());
     assert!(find_options.pager_enabled());
 }
+
+#[test]
+fn meeting_short_aliases_run_the_meeting_command() {
+    for alias in ["mtg", "m"] {
+        let request = parse_request(["alc", alias], today()).expect("alias should parse");
+
+        assert_eq!(request.to_string(), "meeting:now");
+    }
+}
+
+#[test]
+fn meeting_short_aliases_accept_subcommands() {
+    let request =
+        parse_request(["alc", "m", "find", "turning point"], today()).expect("alias should parse");
+
+    assert_eq!(request.to_string(), "meeting:find");
+}
+
+#[test]
+fn daily_reflection_short_alias_accepts_a_short_date() {
+    let request =
+        parse_request(["alc", "d", "--date", "01-02"], today()).expect("alias should parse");
+
+    assert_eq!(request.to_string(), "daily-reflection:2026-01-02");
+}

@@ -21,7 +21,8 @@ alc meeting now
 alc meeting now --type online --limit 10
 ```
 
-`alc meeting` is an alias for `alc meeting now`. Times are evaluated in New
+`alc meeting` is an alias for `alc meeting now`, and `alc mtg` and `alc m` are
+short aliases for `alc meeting` itself. Times are evaluated in New
 York. Results include online, hybrid, and in-person meetings by default, with
 online-capable meetings first. `--type online` includes hybrid meetings. The
 30-minute elapsed cutoff is inclusive and applies only to `meeting now` and the
@@ -117,11 +118,13 @@ Reflections are not stored in this cache.
 
 ```sh
 alc daily
+alc d
 alc daily-reflection
 alc daily --date 2024-02-29
-alc daily --date 09-06
+alc d --date 09-06
 ```
 
+`alc daily` and `alc d` are aliases for `alc daily-reflection`.
 Dates accept `YYYY-MM-DD` or `MM-DD`. When the year is omitted, `alc` uses the
 current local year. With no date, it uses today's local date. Output includes
 AA World Services' attribution and a link to the official source page.

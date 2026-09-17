@@ -4,17 +4,21 @@
 
 ```text
 alc
-├── meeting
+├── meeting (aliases: mtg, m)
 │   ├── now
 │   ├── find [QUERY]
 │   ├── today | tomorrow | week
 │   ├── sunday | monday | ... | saturday
 │   └── morning | afternoon | night (alias: evening)
-└── daily-reflection (alias: daily)
+└── daily-reflection (aliases: daily, d)
 ```
 
 A bare `alc` prints help. `alc meeting` is equivalent to
-`alc meeting now`.
+`alc meeting now`. The top-level commands carry short aliases for fast typing:
+`alc mtg` and `alc m` run `alc meeting`, and `alc daily` and `alc d` run
+`alc daily-reflection`. An alias accepts everything its full command does, so
+`alc m find --type online` and `alc d --date 09-06` behave identically to the
+long forms.
 
 Every command supports `-h` and `--help`. Help includes a summary, usage,
 every argument and option, relevant defaults, and worked examples. Help is

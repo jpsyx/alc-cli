@@ -175,3 +175,14 @@ same reason.
 Wrapping lives in its own pure module rather than reusing the meeting table's
 hard-width `wrap_text`, because a table column must respect an exact width
 while prose should not.
+
+## 2026-09-17: Add short aliases to the top-level commands
+
+`meeting` also answers to `mtg` and `m`, and `daily-reflection` also answers to
+`daily` and `d`. These two workflows are the whole CLI, so single letters are
+unambiguous, and they are the commands a user types many times a day.
+
+The aliases are visible, not hidden, so `--help` documents the short forms
+rather than leaving them as folklore. Nothing else changes: an alias is only
+another spelling of the same command and inherits all of its subcommands and
+flags.

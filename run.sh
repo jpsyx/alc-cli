@@ -11,8 +11,8 @@ usage() {
     '  ./run.sh <COMMAND>' \
     '' \
     'Commands:' \
-    '  meeting           Find New York Inter-Group meetings.' \
-    '  daily-reflection  Read an AA Daily Reflection. Alias: daily.' \
+    '  meeting           Find New York Inter-Group meetings. Aliases: mtg, m.' \
+    '  daily-reflection  Read an AA Daily Reflection. Aliases: daily, d.' \
     '' \
     'Options:' \
     '  -h, --help        Print help and exit.' \
@@ -21,7 +21,8 @@ usage() {
     'Examples:' \
     '  ./run.sh meeting' \
     '  ./run.sh meeting find --weekday sunday --type online' \
-    '  ./run.sh daily'
+    '  ./run.sh daily' \
+    '  ./run.sh m today'
 }
 
 case "${1:-}" in

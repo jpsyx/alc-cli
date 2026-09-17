@@ -25,7 +25,7 @@ use theme::Theme;
     version,
     disable_help_subcommand = true,
     about = "Find AA meetings and read Daily Reflections from the terminal",
-    after_help = "Examples:\n  alc meeting\n  alc meeting find --weekday sunday --time morning --type online\n  alc daily\n  alc daily --date 09-06"
+    after_help = "Command aliases: `meeting` is also `mtg` and `m`; `daily-reflection` is also `daily` and `d`.\n\nExamples:\n  alc meeting\n  alc m\n  alc meeting find --weekday sunday --time morning --type online\n  alc daily\n  alc d --date 09-06"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -36,7 +36,8 @@ struct Cli {
 enum CliCommand {
     /// Find meetings from the New York Inter-Group directory.
     #[command(
-        after_help = "With no command, `alc meeting` runs `alc meeting now`. Schedule shortcuts include today, tomorrow, week (also `this week`), every weekday, morning, afternoon, and night (also evening). Date and time shortcuts can be combined in either order.\n\nExamples:\n  alc meeting\n  alc meeting now --type online --limit 10\n  alc meeting today --type online\n  alc meeting tomorrow night\n  alc meeting this week morning\n  alc meeting evening tuesday\n  alc meeting find \"turning point\"\n  alc meeting find --region brooklyn --type in-person"
+        visible_aliases = ["mtg", "m"],
+        after_help = "With no command, `alc meeting` runs `alc meeting now`. This command is also available as `alc mtg` and `alc m`. Schedule shortcuts include today, tomorrow, week (also `this week`), every weekday, morning, afternoon, and night (also evening). Date and time shortcuts can be combined in either order.\n\nExamples:\n  alc meeting\n  alc meeting now --type online --limit 10\n  alc meeting today --type online\n  alc meeting tomorrow night\n  alc meeting this week morning\n  alc meeting evening tuesday\n  alc meeting find \"turning point\"\n  alc meeting find --region brooklyn --type in-person\n  alc m today\n  alc mtg find \"turning point\""
     )]
     Meeting {
         #[command(subcommand)]
@@ -44,8 +45,8 @@ enum CliCommand {
     },
     /// Read an AA Daily Reflection.
     #[command(
-        visible_alias = "daily",
-        after_help = "Defaults to today's local date. A date without a year uses the current local year.\n\nExamples:\n  alc daily\n  alc daily --date 09-06\n  alc daily-reflection --date 2024-02-29"
+        visible_aliases = ["daily", "d"],
+        after_help = "Defaults to today's local date. A date without a year uses the current local year. This command is also available as `alc daily` and `alc d`.\n\nExamples:\n  alc daily\n  alc d\n  alc daily --date 09-06\n  alc daily-reflection --date 2024-02-29"
     )]
     DailyReflection {
         /// Reflection date as YYYY-MM-DD or MM-DD (default: today).
