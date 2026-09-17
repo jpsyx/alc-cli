@@ -1,8 +1,10 @@
-# ALC
+# AA CLI
 
-`alc` is an independent Rust CLI for finding AA meetings listed by
+`alc` is an independent Rust CLI for finding Alcoholics Anonymous meetings listed by
 [New York Inter-Group](https://www.nyintergroup.org/meetings/) and reading
 [AA Daily Reflections](https://www.aa.org/daily-reflections).
+
+This was built as a personal side project shich is why it is NYC-focused. This repo can easily be forked and extended to work with other AA directories.
 
 Meeting information changes. The upstream directory and each meeting's source
 page remain authoritative. This project is not affiliated with Alcoholics
@@ -67,21 +69,21 @@ bold, color-coded badge next to the meeting name, such as `[Online]`,
 `[Hybrid]`, or `[In person]`. When both input and output are interactive
 terminals, meeting lists open in a built-in pager:
 
-| Key | Action |
-| --- | --- |
-| `j`, `k`, down arrow, up arrow | Move one line. |
-| `d`, `u` | Move half a page down or up. |
-| `/` | Edit a live filter that searches every displayed field. |
-| `Ctrl+U` | Clear the filter text while continuing to edit. |
-| `Backspace` | Delete one character, or exit editing when the filter is empty. |
-| `Enter`, `Esc` | Finish editing the filter and return to navigation. |
-| `G` | Jump to the end of the filtered list. |
-| `a` | Show all access modes. |
-| `h` | Show hybrid meetings. |
-| `p` | Show in-person-capable meetings, including hybrid. |
-| `o` | Show online-capable meetings, including hybrid. |
-| `r` | Reset filters and scroll position to the original command view. |
-| `q` | Quit while navigating. While editing, `q` is filter text. |
+| Key                            | Action                                                          |
+| ------------------------------ | --------------------------------------------------------------- |
+| `j`, `k`, down arrow, up arrow | Move one line.                                                  |
+| `d`, `u`                       | Move half a page down or up.                                    |
+| `/`                            | Edit a live filter that searches every displayed field.         |
+| `Ctrl+U`                       | Clear the filter text while continuing to edit.                 |
+| `Backspace`                    | Delete one character, or exit editing when the filter is empty. |
+| `Enter`, `Esc`                 | Finish editing the filter and return to navigation.             |
+| `G`                            | Jump to the end of the filtered list.                           |
+| `a`                            | Show all access modes.                                          |
+| `h`                            | Show hybrid meetings.                                           |
+| `p`                            | Show in-person-capable meetings, including hybrid.              |
+| `o`                            | Show online-capable meetings, including hybrid.                 |
+| `r`                            | Reset filters and scroll position to the original command view. |
+| `q`                            | Quit while navigating. While editing, `q` is filter text.       |
 
 A filter keeps the complete table for every matching meeting and highlights
 each matching fragment. Text and access filters combine, and `a` clears only
@@ -102,11 +104,11 @@ within 2 hours 15 minutes, inclusive, append a bold yellow relative time such as
 The full meeting directory is fetched at most once per New York calendar day.
 Later meeting commands reuse the validated local cache:
 
-| Platform | Cache file |
-| --- | --- |
-| macOS | `~/Library/Caches/alc/meetings.cache` |
-| Linux | `$XDG_CACHE_HOME/alc/meetings.cache`, or `~/.cache/alc/meetings.cache` |
-| Windows | `%LOCALAPPDATA%\alc\meetings.cache` |
+| Platform | Cache file                                                             |
+| -------- | ---------------------------------------------------------------------- |
+| macOS    | `~/Library/Caches/alc/meetings.cache`                                  |
+| Linux    | `$XDG_CACHE_HOME/alc/meetings.cache`, or `~/.cache/alc/meetings.cache` |
+| Windows  | `%LOCALAPPDATA%\alc\meetings.cache`                                    |
 
 Deleting the file forces the next meeting command to refresh it. Daily
 Reflections are not stored in this cache.
