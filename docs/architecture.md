@@ -14,6 +14,7 @@ The crate is organized by user workflow:
   presents centralized meeting tables through direct output or a pager;
 - `src/daily_reflection.rs` validates dates, retrieves AA.org's structured
   response, verifies and parses its HTML fragment, and renders plain text;
+- `src/text_wrap.rs` soft-wraps prose to a readable measure;
 - `src/theme.rs` owns the dark-terminal semantic palette and the corresponding
   Clap help and error styles;
 - `src/main.rs` is a thin process shell for clocks, environment overrides,
@@ -143,6 +144,11 @@ AA.org's own Daily Reflections page calls an internal
 is an HTML article. `alc` validates the requested calendar date locally,
 requests the month and day, checks the article's `data-date`, extracts text,
 and preserves copyright attribution.
+
+Rendering wraps the title, body paragraphs, and copyright through
+`text_wrap::wrap_prose`, a pure function with no terminal dependency. Each
+wrapped line is styled individually so no escape sequence spans a line break.
+The source URL keeps its own unwrapped line.
 
 Both upstream sites are mutable external input. Retrieval and parsing errors
 remain distinguishable from an authoritative empty result.

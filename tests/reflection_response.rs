@@ -107,3 +107,52 @@ fn fetches_the_requested_date_from_a_reflection_api() {
 
     assert_eq!(reflection.title(), "KEEP IT SIMPLE & TRUE");
 }
+
+const LONG_API_RESPONSE: &str = r#"{
+  "method": "GET",
+  "err": 200,
+  "data": "<article data-date=\"09-06\"><h3><span class=\"field--name-title\">KEEP IT SIMPLE</span></h3><div class=\"field--name-field-date\">September 06</div><div class=\"field--name-body\"><p>When I am disturbed, it is because I find some person, place, thing, or situation, some fact of my life, unacceptable to me, and I can find no serenity until I accept that person as being exactly the way it is supposed to be at this moment.</p></div><div class=\"field--name-field-copyright\"><div class=\"field--name-description\"><p>Example copyright notice that runs well past the comfortable reading width of a terminal window.</p></div></div></article>",
+  "errMedia": 404,
+  "dataMedia": ""
+}"#;
+
+#[test]
+fn wraps_long_reflection_prose_for_comfortable_reading() {
+    let date = ReflectionDate::parse("2026-09-06", 2026).expect("fixture date should parse");
+    let reflection = parse_api_response(LONG_API_RESPONSE, date).expect("response should parse");
+
+    let output = render(&reflection, Theme::dark(false));
+
+    let body = output
+        .split("\n\n")
+        .nth(2)
+        .expect("output should contain a body block");
+    assert_eq!(
+        body.lines().collect::<Vec<_>>(),
+        [
+            "When I am disturbed, it is because I find some person, place, thing, or situation,",
+            "some fact of my life, unacceptable to me, and I can find no serenity until I accept",
+            "that person as being exactly the way it is supposed to be at this moment.",
+        ]
+    );
+    assert!(
+        output.lines().any(|line| line
+            == "Example copyright notice that runs well past the comfortable reading width of a"),
+        "copyright should wrap: {output}"
+    );
+}
+
+#[test]
+fn keeps_the_source_url_on_one_line() {
+    let date = ReflectionDate::parse("2026-09-06", 2026).expect("fixture date should parse");
+    let reflection = parse_api_response(LONG_API_RESPONSE, date).expect("response should parse");
+
+    let output = render(&reflection, Theme::dark(false));
+
+    assert!(
+        output
+            .lines()
+            .any(|line| line == "Source: https://www.aa.org/daily-reflections?date=00-09-06"),
+        "source URL should not wrap: {output}"
+    );
+}

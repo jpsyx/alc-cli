@@ -10,6 +10,7 @@ use clap::{
 pub mod daily_reflection;
 pub mod meeting;
 mod schedule;
+pub mod text_wrap;
 pub mod theme;
 
 pub use schedule::{MeetingSchedule, ScheduleDay, ScheduleTime};
