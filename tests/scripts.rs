@@ -58,6 +58,54 @@ fn installer_reports_build_and_success_with_clear_status_markers() {
     assert!(stderr.contains("! The installation directory is not on PATH."));
 }
 
+#[test]
+fn installer_honors_the_name_and_replaces_only_that_command() {
+    let temporary = TestDirectory::new();
+    for _ in 0..2 {
+        let output = Command::new("/bin/bash")
+            .args(["install.sh", "--name", "contract-probe"])
+            .env("BIN_DIR", temporary.path())
+            .output()
+            .expect("installer should run");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fs::read_dir(temporary.path()).unwrap().count(), 1);
+        let version = Command::new(temporary.path().join("contract-probe"))
+            .arg("--version")
+            .output()
+            .expect("installed command should run");
+        assert!(version.status.success());
+        assert!(String::from_utf8_lossy(&version.stdout).starts_with("alc "));
+    }
+}
+
+#[test]
+fn installer_rejects_invalid_arguments_without_creating_the_destination() {
+    let temporary = TestDirectory::new();
+    let destination = temporary.path().join("absent");
+    for args in [
+        vec!["--unknown"],
+        vec!["--name"],
+        vec!["--name", "../escape"],
+        vec!["--name", ""],
+    ] {
+        let output = Command::new("/bin/bash")
+            .arg("install.sh")
+            .args(args)
+            .env("BIN_DIR", &destination)
+            .env("PATH", "")
+            .output()
+            .expect("installer should run");
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Usage:"));
+        assert!(!destination.exists());
+    }
+}
+
 struct TestDirectory(PathBuf);
 
 impl TestDirectory {

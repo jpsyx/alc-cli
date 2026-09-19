@@ -156,7 +156,8 @@ alc --help
 ```
 
 The default destination is `~/.local/bin/alc`. Set `BIN_DIR` to choose
-another directory.
+another directory. Use `./install.sh --name alc-dev` to choose the command
+filename. Repeating the same invocation replaces that binary in place.
 
 ## Develop
 

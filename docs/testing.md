@@ -54,7 +54,9 @@ reflection prose.
 Shell entry-point tests invoke `run.sh --help` and `install.sh --help` with an
 empty `PATH`, proving help completes before tool and build checks. The installer
 also runs against an isolated temporary directory to verify its build, success,
-and warning output without modifying the user's installation.
+and warning output without modifying the user's installation. Named installation
+tests execute the installed binary, repeat the install to check replacement,
+and verify invalid arguments leave the destination absent.
 
 Live smoke tests may be run manually against both official sources after the
 default suite passes. The full local verification gate is:

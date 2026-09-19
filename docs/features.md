@@ -1,5 +1,13 @@
 # Features
 
+## Installation
+
+`./install.sh` builds and installs the release binary as `alc` under
+`$HOME/.local/bin`. `BIN_DIR` changes the destination directory and
+`--name <command>` changes the command filename. Reinstalling the same name
+replaces it in place. Help exits before tool checks or writes; unknown options,
+missing names, and names containing paths are rejected before installation.
+
 ## Command tree
 
 ```text
